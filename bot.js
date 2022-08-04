@@ -41,7 +41,9 @@ const COMMANDS = Object.freeze({
     REPEAT: "repeat",
     ISREPEAT: "isrepeat",
     FILE: "file",
-    EXPORT: "export"
+    EXPORT: "export",
+    CLEAR: "clear",
+    QUEUE: "queue"
 });
 
 let playlist = null; // The file (sans extension) that contains the songs in the playlist
@@ -72,7 +74,9 @@ function toggleRepeat() {
 
 async function prepareSongs() {
     voiceChannel = bot.channels.cache.get(config.voiceChannel);
-    if (!voiceChannel) return console.error('The voice channel does not exist!\n(Have you looked at your configuration?)');
+    if (!voiceChannel){ return console.error('The voice channel does not exist!\n(Have you looked at your configuration?)');}
+
+
     let files = null; // Stores the array of files to read from
 
     files = await voiceChannel.join().then(_connection => {
@@ -158,7 +162,8 @@ bot.on('message', async msg => {
     if (msg.author.bot) return;
     if (!msg.guild) return;
     if (!msg.content.startsWith(config.prefix)) return;
-    let command = msg.content.split(' ')[0];
+    let splitUserInput = msg.content.split(' ');
+    let command = splitUserInput[0];
     command = command.slice(config.prefix.length);
 
     // Public allowed commands
@@ -169,18 +174,19 @@ bot.on('message', async msg => {
             .setAuthor(`${bot.user.username} Help`, bot.user.avatarURL())
             .setDescription(`Currently playing \`${audio}\`.`)
             .addField('Public Commands',
-                ` ${config.prefix}help\n
+                ` ${config.prefix}help | Displays this menu\n
                   ${config.prefix}playing\n
                   ${config.prefix}about\n
                   ${config.prefix}resume\n
                   ${config.prefix}pause\n
                   ${config.prefix}skip\n
-                  ${config.prefix}repeat\n
-                  ${config.prefix}isrepeat\n
-                  ${config.prefix}file <song name without extension>\n
-                  ${config.prefix}shuffle\n
-                  ${config.prefix}playlist <playlist name without extension>\n
-                  ${config.prefix}export <file name without extension>\n`, true)
+                  ${config.prefix}repeat | Toggles if the player is repeating\n
+                  ${config.prefix}isrepeat | True if repeat is on\n
+                  ${config.prefix}file <song name without extension> | plays this song in the music folder\n
+                  ${config.prefix}shuffle | shuffles all songs in the music folder\n
+                  ${config.prefix}playlist <playlist name without extension> | plays the playlist given\n
+                  ${config.prefix}export <file name without extension> | uses the current queue to create / update the given playlist\n
+                  ${config.prefix}clear | Empties the song queue\n`, true)
             .addField('Bot Owner Only', `${config.prefix}join\n${config.prefix}leave\n${config.prefix}stop\n`, true)
             .setFooter('© Copyright 2020 Andrew Lee. Licensed with GPL-3.0.')
             .setColor('#0066ff')
@@ -189,7 +195,7 @@ bot.on('message', async msg => {
     }
 
     if (command == COMMANDS.PLAYING) {
-        msg.channel.send('Currently playing `' + audio + '`.');
+        msg.channel.send('Currently playing song `' + currentTrack + " from " + songs + '`.');
     }
 
     if (command == COMMANDS.ABOUT) {
@@ -230,10 +236,9 @@ bot.on('message', async msg => {
 
     if (command == COMMANDS.FILE) { // play a specific file
 
-        let allInputs = msg.content.split(' '); // Todo: refactor this out at the start when it's first split
-        let filePath = allInputs.slice(1, allInputs.length).join(' '); // Get everything but the command, putting the space back
+        let filePath = splitUserInput.slice(1, splitUserInput.length).join(' '); // Get everything but the command, putting the space back
 
-        if (dispatcher === undefined || connection === undefined) { // if dispatcher is undefined, connection should be too, but in case later change makes this not the case, include both checks
+        if (dispatcher === undefined || connection === undefined || dispatcher === null) { // if dispatcher is undefined, connection should be too, but in case later change makes this not the case, include both checks
             await prepareSongs(); // This initialises all the connections, so if it hasn't been called yet, call this now
         } else {
             dispatcher.pause();
@@ -246,8 +251,7 @@ bot.on('message', async msg => {
 
     if (command == COMMANDS.EXPORT) {
         if (songs.length > 0) {
-            let allInputs = msg.content.split(' '); // Todo: refactor this out at the start when it's first split
-            let outputPath = allInputs.slice(1, allInputs.length).join(' '); // Get everything but the command, putting the space back
+            let outputPath = splitUserInput.slice(1, splitUserInput.length).join(' '); // Get everything but the command, putting the space back
             try {
                 fs.appendFileSync("./playlists/" + outputPath + ".json", "[\"" + songs.join("\", \"") + "\"]"); // Write the current playlist to file.  Synchronous doesn't super matter here because it is really fast.  I will swap to async if it is causing delay
             } catch {
@@ -258,6 +262,20 @@ bot.on('message', async msg => {
             msg.reply("There are no songs currently playing!");
         }
     }
+
+    if (command == COMMANDS.CLEAR) {
+        songs = [];
+        currentTrack = 0;
+        dispatcher.pause();
+        dispatcher = null;
+
+    }
+
+    if (command == COMMANDS.QUEUE) {
+        let inputPath = splitUserInput.slice(1, splitUserInput.length).join(' '); // Get everything but the command, putting the space back
+        songs.splice(currentTrack, 0, inputPath + ".mp3");
+    }
+
 
     /* 
     TODO: 
@@ -273,6 +291,7 @@ bot.on('message', async msg => {
         let noCommand = msg.content.split(" ").slice(1, msg.content.length); // Remove the command from the input
         playlist = noCommand.join(' '); // Get all of the message (other than the command), and put any spaces back in that were removed from the split
         songs = await prepareSongs();
+        console.log(songs);
         playAudio();
     }
 
